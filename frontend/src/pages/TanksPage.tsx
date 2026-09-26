@@ -75,6 +75,7 @@ export function TanksPage() {
             <dl className="metric-list">
               <div><dt>参考温度</dt><dd>{number.format(selected.reference_temperature_c)} °C</dd></div>
               <div><dt>体膨胀系数</dt><dd>{selected.thermal_expansion_per_c}</dd></div>
+              <div><dt>日蒸发率</dt><dd>{number.format(selected.bog_rate_kg_per_day)} kg/d ± {number.format(selected.bog_rate_uncertainty_pct)}%</dd></div>
               <div><dt>曲线阶数</dt><dd>{selected.capacity_curve_json.coefficients.length - 1}</dd></div>
             </dl>
           )}
@@ -89,7 +90,8 @@ export function TanksPage() {
           initialValues={{
             nominal_capacity_m3: 180000, min_level_m: 0, max_level_m: 12,
             reference_density_kgm3: 450, reference_temperature_c: -160,
-            thermal_expansion_per_c: 0.0035, capacity_curve_text: '0,15000',
+            thermal_expansion_per_c: 0.0035, bog_rate_kg_per_day: 12000,
+            bog_rate_uncertainty_pct: 5, capacity_curve_text: '0,15000',
             coefficient_version: 'CV-2026.08', tank_status: 'active'
           }}
         >
@@ -102,6 +104,8 @@ export function TanksPage() {
             <Form.Item name="reference_density_kgm3" label="参考密度 (kg/m³)" rules={[{ required: true }]}><InputNumber min={350} max={550} /></Form.Item>
             <Form.Item name="reference_temperature_c" label="参考温度 (°C)" rules={[{ required: true }]}><InputNumber min={-200} max={-100} /></Form.Item>
             <Form.Item name="thermal_expansion_per_c" label="体膨胀系数" rules={[{ required: true }]}><InputNumber min={0.0001} max={0.01} step={0.0001} /></Form.Item>
+            <Form.Item name="bog_rate_kg_per_day" label="日蒸发率 (kg/d)" rules={[{ required: true }]}><InputNumber min={0} max={200000} /></Form.Item>
+            <Form.Item name="bog_rate_uncertainty_pct" label="蒸发率不确定度 (%)" rules={[{ required: true }]}><InputNumber min={0.01} max={10} step={0.1} /></Form.Item>
             <Form.Item className="span-2" name="capacity_curve_text" label="罐容多项式系数（常数项起，逗号分隔）" rules={[{ required: true }]}><Input /></Form.Item>
             <Form.Item name="coefficient_version" label="系数版本" rules={[{ required: true }]}><Input /></Form.Item>
             <Form.Item name="tank_status" label="状态" rules={[{ required: true }]}><Select options={Object.entries(statusLabel).map(([value, label]) => ({ value, label }))} /></Form.Item>

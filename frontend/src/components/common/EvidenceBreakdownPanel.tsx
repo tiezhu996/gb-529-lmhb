@@ -7,7 +7,8 @@ const sourceLabels: Record<string, string> = {
   opening_snapshot: '期初快照',
   closing_snapshot: '期末快照',
   transfer_inflow: '流入计量',
-  transfer_outflow: '流出计量'
+  transfer_outflow: '流出计量',
+  normal_bog_estimate: '正常蒸发估计'
 }
 
 export function EvidenceBreakdownPanel({ run }: { run?: BalanceRun }) {
@@ -21,16 +22,21 @@ export function EvidenceBreakdownPanel({ run }: { run?: BalanceRun }) {
           <span className="eyebrow">EVIDENCE SNAPSHOT</span>
           <h2>证据与不确定度</h2>
         </div>
-        <Tag color={run.deviation_level === 'investigate' ? 'warning' : 'success'}>
+        <Tag color={run.deviation_level === 'invalid' ? 'error' : run.deviation_level === 'investigate' ? 'warning' : 'success'}>
           {deviationLabels[run.deviation_level]}
         </Tag>
       </div>
       <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 4 }} bordered>
-        <Descriptions.Item label="算法版本">{evidence.algorithm_version ?? 'mass-balance-v1.0'}</Descriptions.Item>
+        <Descriptions.Item label="算法版本">{evidence.algorithm_version ?? 'mass-balance-v1.1'}</Descriptions.Item>
         <Descriptions.Item label="系数版本">{run.coefficient_version}</Descriptions.Item>
+        <Descriptions.Item label="正常蒸发估计">{kg(run.estimated_bog_kg)}</Descriptions.Item>
+        <Descriptions.Item label="未解释项">{kg(run.unexplained_kg)}</Descriptions.Item>
         <Descriptions.Item label="合成不确定度">{kg(run.uncertainty_kg)}</Descriptions.Item>
         <Descriptions.Item label="偏差">{number.format(run.deviation_pct)}%</Descriptions.Item>
       </Descriptions>
+      {evidence.input_anomaly ? (
+        <Alert type="error" showIcon message={evidence.anomaly_reason ?? '估出的正常蒸发量超过总偏差，输入存在异常'} />
+      ) : null}
       {uncertainty?.components?.length ? (
         <Table<UncertaintyComponent>
           className="evidence-table"

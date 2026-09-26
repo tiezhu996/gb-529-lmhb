@@ -9,11 +9,12 @@ const (
 	BalanceAccepted      BalanceStatus = "accepted"
 	BalanceRejected      BalanceStatus = "rejected"
 	BalanceInvalidated   BalanceStatus = "invalidated"
+	BalanceInputAnomaly  BalanceStatus = "input_anomaly"
 )
 
 var BalanceStatuses = []BalanceStatus{
 	BalanceQueued, BalanceCalculating, BalancePendingReview,
-	BalanceAccepted, BalanceRejected, BalanceInvalidated,
+	BalanceAccepted, BalanceRejected, BalanceInvalidated, BalanceInputAnomaly,
 }
 
 func ValidBalanceStatus(value BalanceStatus) bool {
@@ -34,6 +35,8 @@ func CanTransitionBalance(from, to BalanceStatus) bool {
 	case BalancePendingReview:
 		return to == BalanceAccepted || to == BalanceRejected || to == BalanceInvalidated
 	case BalanceRejected:
+		return to == BalanceInvalidated
+	case BalanceInputAnomaly:
 		return to == BalanceInvalidated
 	default:
 		return false

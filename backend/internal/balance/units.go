@@ -39,6 +39,13 @@ func ValidateUncertainty(percent float64) error {
 	return nil
 }
 
+func ValidateBOGRate(rateKGPerDay float64) error {
+	if !finite(rateKGPerDay) || rateKGPerDay < 0 || rateKGPerDay > 200000 {
+		return fmt.Errorf("daily boil-off rate %.6f kg/day is outside [0, 200000]", rateKGPerDay)
+	}
+	return nil
+}
+
 func PercentFraction(percent float64) float64 { return percent / 100 }
 
 func Round(value float64, places int) float64 {

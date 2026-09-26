@@ -13,7 +13,7 @@ import { dateTime, kg, localInputDate, number } from '../utils/format'
 
 const statusLabels: Record<BalanceStatus, string> = {
   queued: '排队', calculating: '已计算', pending_review: '待复核',
-  accepted: '已接受', rejected: '已驳回', invalidated: '已作废'
+  accepted: '已接受', rejected: '已驳回', invalidated: '已作废', input_anomaly: '输入异常'
 }
 
 export function BalancesPage() {
@@ -67,16 +67,24 @@ export function BalancesPage() {
           <div className="chart-panel">
             <div className="section-heading">
               <div><h2>质量边界瀑布</h2><span>{selected ? selected.tank?.tank_code + ' · ' + dateTime(selected.period_end) : '尚未选择运行'}</span></div>
-              {selected && <Tag color={selected.deviation_level === 'investigate' ? 'warning' : 'success'}>{deviationLabels[selected.deviation_level]}</Tag>}
+              {selected && <Tag color={selected.deviation_level === 'invalid' ? 'error' : selected.deviation_level === 'investigate' ? 'warning' : 'success'}>{deviationLabels[selected.deviation_level]}</Tag>}
             </div>
             <MassBalanceWaterfall run={selected} />
             {selected && (
               <div className="metric-strip">
-                <div><span>BOG / 未解释项</span><strong>{kg(selected.estimated_bog_kg)}</strong></div>
+                <div><span>正常蒸发估计</span><strong>{kg(selected.estimated_bog_kg)}</strong></div>
+                <div><span>未解释项</span><strong>{kg(selected.unexplained_kg)}</strong></div>
                 <div><span>不确定度</span><strong>± {kg(selected.uncertainty_kg)}</strong></div>
                 <div><span>偏差率</span><strong>{number.format(selected.deviation_pct)}%</strong></div>
                 <div><span>状态</span><strong>{statusLabels[selected.balance_status]}</strong></div>
               </div>
+            )}
+            {selected?.balance_status === 'input_anomaly' && (
+              <Alert
+                type="error"
+                showIcon
+                message="输入异常：估出的正常蒸发量超过总偏差，边界快照或转移计量可能存在问题，该运行不能送审。"
+              />
             )}
           </div>
           <EvidenceBreakdownPanel run={selected} />

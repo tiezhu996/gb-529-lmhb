@@ -70,8 +70,12 @@ func (r *BalanceRepository) CreateCalculated(ctx context.Context, run *model.Bal
 		if err := tx.Create(&queuedAudit).Error; err != nil {
 			return fmt.Errorf("audit queued balance run: %w", err)
 		}
-		calculatedAudit := NewAudit(actor, "balance_run.calculated", "balance_run", run.ID, map[string]any{"status": constants.BalanceQueued}, map[string]any{
-			"status": run.BalanceStatus, "estimated_bog_kg": run.EstimatedBOGKG,
+		calculatedAction := "balance_run.calculated"
+		if run.BalanceStatus == constants.BalanceInputAnomaly {
+			calculatedAction = "balance_run.input_anomaly"
+		}
+		calculatedAudit := NewAudit(actor, calculatedAction, "balance_run", run.ID, map[string]any{"status": constants.BalanceQueued}, map[string]any{
+			"status": run.BalanceStatus, "estimated_bog_kg": run.EstimatedBOGKG, "unexplained_kg": run.UnexplainedKG,
 			"uncertainty_kg": run.UncertaintyKG, "deviation_level": run.DeviationLevel,
 			"coefficient_version": run.CoefficientVersion,
 		})

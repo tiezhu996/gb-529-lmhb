@@ -37,6 +37,9 @@ func (s *TankService) Create(ctx context.Context, request dto.CreateTankRequest,
 	if !constants.CanAnalyze(actor.Role) {
 		return model.StorageTank{}, api.ErrForbidden
 	}
+	if err := validateBOGParameters(request.BOGRateKGPerDay, request.BOGRateUncertaintyPct); err != nil {
+		return model.StorageTank{}, err
+	}
 	curveJSON, err := validateAndMarshalTank(request.MinLevelM, request.MaxLevelM, request.NominalCapacityM3, request.CapacityCurve)
 	if err != nil {
 		return model.StorageTank{}, err
@@ -50,6 +53,8 @@ func (s *TankService) Create(ctx context.Context, request dto.CreateTankRequest,
 		ReferenceDensityKGM3:  request.ReferenceDensityKGM3,
 		ReferenceTemperatureC: request.ReferenceTemperatureC,
 		ThermalExpansionPerC:  request.ThermalExpansionPerC,
+		BOGRateKGPerDay:       request.BOGRateKGPerDay,
+		BOGRateUncertaintyPct: request.BOGRateUncertaintyPct,
 		CapacityCurveJSON:     datatypes.JSON(curveJSON),
 		CoefficientVersion:    strings.TrimSpace(request.CoefficientVersion),
 		TankStatus:            request.TankStatus,
@@ -72,6 +77,9 @@ func (s *TankService) Update(ctx context.Context, id uint, request dto.UpdateTan
 	if before.Version != request.Version {
 		return model.StorageTank{}, api.NewError(409, "TANK_VERSION_CONFLICT", "储罐参数版本已变化，请刷新后重试")
 	}
+	if err := validateBOGParameters(request.BOGRateKGPerDay, request.BOGRateUncertaintyPct); err != nil {
+		return model.StorageTank{}, err
+	}
 	curveJSON, err := validateAndMarshalTank(request.MinLevelM, request.MaxLevelM, request.NominalCapacityM3, request.CapacityCurve)
 	if err != nil {
 		return model.StorageTank{}, err
@@ -84,6 +92,8 @@ func (s *TankService) Update(ctx context.Context, id uint, request dto.UpdateTan
 	updated.ReferenceDensityKGM3 = request.ReferenceDensityKGM3
 	updated.ReferenceTemperatureC = request.ReferenceTemperatureC
 	updated.ThermalExpansionPerC = request.ThermalExpansionPerC
+	updated.BOGRateKGPerDay = request.BOGRateKGPerDay
+	updated.BOGRateUncertaintyPct = request.BOGRateUncertaintyPct
 	updated.CapacityCurveJSON = datatypes.JSON(curveJSON)
 	updated.CoefficientVersion = strings.TrimSpace(request.CoefficientVersion)
 	updated.TankStatus = request.TankStatus
@@ -107,6 +117,16 @@ func (s *TankService) MeasurementQuality(ctx context.Context, id uint) (dto.Tank
 		result.LatestSnapshot = latest
 	}
 	return result, nil
+}
+
+func validateBOGParameters(rateKGPerDay, uncertaintyPct float64) error {
+	if err := balance.ValidateBOGRate(rateKGPerDay); err != nil {
+		return api.WithDetails(api.NewError(422, "INVALID_BOG_RATE", "日蒸发率超出允许范围"), map[string]any{"reason": err.Error()})
+	}
+	if err := balance.ValidateUncertainty(uncertaintyPct); err != nil {
+		return api.WithDetails(api.NewError(422, "INVALID_BOG_RATE_UNCERTAINTY", "日蒸发率不确定度必须位于 (0, 10] %"), map[string]any{"reason": err.Error()})
+	}
+	return nil
 }
 
 func validateAndMarshalTank(minimum, maximum, nominal float64, coefficients []float64) ([]byte, error) {

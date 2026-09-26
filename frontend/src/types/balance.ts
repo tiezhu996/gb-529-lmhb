@@ -1,7 +1,7 @@
 import type { DeviationLevel } from './deviation'
 import type { StorageTank } from './tank'
 
-export type BalanceStatus = 'queued' | 'calculating' | 'pending_review' | 'accepted' | 'rejected' | 'invalidated'
+export type BalanceStatus = 'queued' | 'calculating' | 'pending_review' | 'accepted' | 'rejected' | 'invalidated' | 'input_anomaly'
 
 export interface BalanceRun {
   id: number
@@ -14,6 +14,7 @@ export interface BalanceRun {
   closing_mass_kg: number
   net_transfer_kg: number
   estimated_bog_kg: number
+  unexplained_kg: number
   uncertainty_kg: number
   interval_lower_kg: number
   interval_upper_kg: number
@@ -52,6 +53,8 @@ export interface BalanceEvidence {
   algorithm_version?: string
   equation?: Record<string, number>
   uncertainty?: UncertaintyBreakdown
+  input_anomaly?: boolean
+  anomaly_reason?: string
   safety_boundary?: string
 }
 

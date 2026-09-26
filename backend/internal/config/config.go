@@ -137,8 +137,8 @@ func seed(db *gorm.DB) error {
 		curveAJSON, _ := curveA.Marshal()
 		curveBJSON, _ := curveB.Marshal()
 		tanks := []model.StorageTank{
-			{TankCode: "TK-101", Name: "北区 LNG 储罐", NominalCapacityM3: 180000, MinLevelM: 0, MaxLevelM: 12, ReferenceDensityKGM3: 452, ReferenceTemperatureC: -160, ThermalExpansionPerC: 0.0035, CapacityCurveJSON: datatypes.JSON(curveAJSON), CoefficientVersion: "CV-2026.08-A", TankStatus: "active", Version: 1},
-			{TankCode: "TK-202", Name: "南区 LNG 储罐", NominalCapacityM3: 162000, MinLevelM: 0, MaxLevelM: 12, ReferenceDensityKGM3: 449, ReferenceTemperatureC: -160, ThermalExpansionPerC: 0.0034, CapacityCurveJSON: datatypes.JSON(curveBJSON), CoefficientVersion: "CV-2026.07-B", TankStatus: "active", Version: 1},
+			{TankCode: "TK-101", Name: "北区 LNG 储罐", NominalCapacityM3: 180000, MinLevelM: 0, MaxLevelM: 12, ReferenceDensityKGM3: 452, ReferenceTemperatureC: -160, ThermalExpansionPerC: 0.0035, BOGRateKGPerDay: 12000, BOGRateUncertaintyPct: 6, CapacityCurveJSON: datatypes.JSON(curveAJSON), CoefficientVersion: "CV-2026.08-A", TankStatus: "active", Version: 1},
+			{TankCode: "TK-202", Name: "南区 LNG 储罐", NominalCapacityM3: 162000, MinLevelM: 0, MaxLevelM: 12, ReferenceDensityKGM3: 449, ReferenceTemperatureC: -160, ThermalExpansionPerC: 0.0034, BOGRateKGPerDay: 11000, BOGRateUncertaintyPct: 6.5, CapacityCurveJSON: datatypes.JSON(curveBJSON), CoefficientVersion: "CV-2026.07-B", TankStatus: "active", Version: 1},
 		}
 		if err := tx.Create(&tanks).Error; err != nil {
 			return fmt.Errorf("create seed tanks: %w", err)

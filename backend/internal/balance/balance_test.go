@@ -3,6 +3,7 @@ package balance
 import (
 	"math"
 	"testing"
+	"time"
 
 	"lng-boiloff-gas-balance/backend/internal/constants"
 )
@@ -79,5 +80,37 @@ func TestDeviationClassificationBoundaries(t *testing.T) {
 		if got := ClassifyDeviation(test.deviation, test.uncertainty, test.valid); got != test.want {
 			t.Fatalf("classify %.2f/%.2f valid=%v: got %s want %s", test.deviation, test.uncertainty, test.valid, got, test.want)
 		}
+	}
+}
+
+func TestEstimateNormalBOGAndDeviationSplit(t *testing.T) {
+	estimated, err := EstimateNormalBOG(12000, 36*time.Hour)
+	if err != nil {
+		t.Fatalf("estimate normal boil-off: %v", err)
+	}
+	if estimated != 18000 {
+		t.Fatalf("expected 18000 kg over 1.5 days, got %.3f", estimated)
+	}
+	unexplained, err := UnexplainedDeviation(50000, estimated)
+	if err != nil {
+		t.Fatalf("split deviation: %v", err)
+	}
+	if unexplained != 32000 {
+		t.Fatalf("expected unexplained 32000 kg, got %.3f", unexplained)
+	}
+	if IsInputAnomaly(estimated, 50000) {
+		t.Fatal("estimate below total deviation must not be an input anomaly")
+	}
+	if !IsInputAnomaly(60000, 50000) {
+		t.Fatal("estimate above total deviation must be an input anomaly")
+	}
+	if !IsInputAnomaly(0, -1000) {
+		t.Fatal("negative total deviation cannot cover any normal boil-off")
+	}
+	if _, err := EstimateNormalBOG(-5, 24*time.Hour); err == nil {
+		t.Fatal("negative boil-off rate must fail")
+	}
+	if _, err := EstimateNormalBOG(12000, 0); err == nil {
+		t.Fatal("non-positive period must fail")
 	}
 }

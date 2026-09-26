@@ -16,6 +16,8 @@ type StorageTank struct {
 	ReferenceDensityKGM3  float64        `json:"reference_density_kgm3" gorm:"not null;check:reference_density_kgm3 > 0"`
 	ReferenceTemperatureC float64        `json:"reference_temperature_c" gorm:"not null"`
 	ThermalExpansionPerC  float64        `json:"thermal_expansion_per_c" gorm:"not null;check:thermal_expansion_per_c >= 0"`
+	BOGRateKGPerDay       float64        `json:"bog_rate_kg_per_day" gorm:"not null;default:0;check:bog_rate_kg_per_day >= 0"`
+	BOGRateUncertaintyPct float64        `json:"bog_rate_uncertainty_pct" gorm:"not null;default:5;check:bog_rate_uncertainty_pct > 0"`
 	CapacityCurveJSON     datatypes.JSON `json:"capacity_curve_json" gorm:"type:jsonb;not null"`
 	CoefficientVersion    string         `json:"coefficient_version" gorm:"size:32;not null"`
 	TankStatus            string         `json:"tank_status" gorm:"size:24;not null;check:tank_status IN ('active','calibration_due','inactive')"`

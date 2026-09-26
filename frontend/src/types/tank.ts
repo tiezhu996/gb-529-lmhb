@@ -14,6 +14,8 @@ export interface StorageTank {
   reference_density_kgm3: number
   reference_temperature_c: number
   thermal_expansion_per_c: number
+  bog_rate_kg_per_day: number
+  bog_rate_uncertainty_pct: number
   capacity_curve_json: CapacityCurve
   coefficient_version: string
   tank_status: TankStatus
@@ -31,6 +33,8 @@ export interface TankInput {
   reference_density_kgm3: number
   reference_temperature_c: number
   thermal_expansion_per_c: number
+  bog_rate_kg_per_day: number
+  bog_rate_uncertainty_pct: number
   capacity_curve: number[]
   coefficient_version: string
   tank_status: TankStatus

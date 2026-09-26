@@ -18,7 +18,7 @@ import (
 	"lng-boiloff-gas-balance/backend/pkg/api"
 )
 
-const balanceAlgorithmVersion = "mass-balance-v1.0"
+const balanceAlgorithmVersion = "mass-balance-v1.1"
 
 type BalanceService struct {
 	repo            *repository.BalanceRepository
@@ -75,17 +75,22 @@ func (s *BalanceService) Run(ctx context.Context, request dto.RunBalanceRequest,
 	if err != nil {
 		return model.BalanceRun{}, err
 	}
+	status := constants.BalanceCalculating
+	if calculation.InputAnomaly {
+		status = constants.BalanceInputAnomaly
+	}
 	run := model.BalanceRun{
 		TankID:             tank.ID,
 		PeriodStart:        start,
 		PeriodEnd:          end,
-		BalanceStatus:      constants.BalanceCalculating,
+		BalanceStatus:      status,
 		InputSnapshotJSON:  datatypes.JSON(snapshotJSON),
 		EvidenceJSON:       datatypes.JSON(evidenceJSON),
 		OpeningMassKG:      calculation.OpeningMassKG,
 		ClosingMassKG:      calculation.ClosingMassKG,
 		NetTransferKG:      calculation.NetTransferKG,
 		EstimatedBOGKG:     calculation.EstimatedBOGKG,
+		UnexplainedKG:      calculation.UnexplainedKG,
 		UncertaintyKG:      calculation.UncertaintyKG,
 		IntervalLowerKG:    calculation.IntervalLowerKG,
 		IntervalUpperKG:    calculation.IntervalUpperKG,
@@ -107,17 +112,21 @@ type calculatedBalance struct {
 	ClosingMassKG   float64
 	NetTransferKG   float64
 	EstimatedBOGKG  float64
+	UnexplainedKG   float64
 	UncertaintyKG   float64
 	IntervalLowerKG float64
 	IntervalUpperKG float64
 	DeviationPct    float64
 	DeviationLevel  constants.DeviationLevel
+	InputAnomaly    bool
 }
 
 type balanceEvidence struct {
 	AlgorithmVersion string                   `json:"algorithm_version"`
 	Equation         map[string]float64       `json:"equation"`
 	Uncertainty      dto.UncertaintyBreakdown `json:"uncertainty"`
+	InputAnomaly     bool                     `json:"input_anomaly"`
+	AnomalyReason    string                   `json:"anomaly_reason,omitempty"`
 	SafetyBoundary   string                   `json:"safety_boundary"`
 }
 
@@ -153,6 +162,21 @@ func calculateBalanceRun(tank model.StorageTank, opening, closing model.Measurem
 	if err != nil {
 		return calculatedBalance{}, nil, nil, fmt.Errorf("calculate physical mass balance: %w", err)
 	}
+	normalBOG, err := balance.EstimateNormalBOG(tank.BOGRateKGPerDay, end.Sub(start))
+	if err != nil {
+		return calculatedBalance{}, nil, nil, fmt.Errorf("estimate normal boil-off: %w", err)
+	}
+	unexplained, err := balance.UnexplainedDeviation(deviation, normalBOG)
+	if err != nil {
+		return calculatedBalance{}, nil, nil, fmt.Errorf("split normal boil-off from deviation: %w", err)
+	}
+	inputAnomaly := balance.IsInputAnomaly(normalBOG, deviation)
+	uncertaintyInputs = append(uncertaintyInputs, balance.UncertaintyInput{
+		Source: "normal_bog_estimate", EntityID: tank.ID, MassKG: normalBOG, UncertaintyPct: tank.BOGRateUncertaintyPct,
+	})
+	components = append(components, dto.UncertaintyComponent{
+		Source: "normal_bog_estimate", EntityID: tank.ID, MassKG: normalBOG, UncertaintyPct: tank.BOGRateUncertaintyPct,
+	})
 	propagated, err := balance.PropagateUncertainty(uncertaintyInputs)
 	if err != nil {
 		return calculatedBalance{}, nil, nil, fmt.Errorf("propagate measurement uncertainty: %w", err)
@@ -160,9 +184,9 @@ func calculateBalanceRun(tank model.StorageTank, opening, closing model.Measurem
 	for index := range components {
 		components[index].AbsoluteKG = propagated.Components[index]
 	}
-	valid := opening.QualityFlag != constants.QualityInvalid && closing.QualityFlag != constants.QualityInvalid
-	level := balance.ClassifyDeviation(deviation, propagated.CombinedKG, valid)
-	lower, upper := balance.ConfidenceInterval(deviation, propagated.CombinedKG)
+	valid := opening.QualityFlag != constants.QualityInvalid && closing.QualityFlag != constants.QualityInvalid && !inputAnomaly
+	level := balance.ClassifyDeviation(unexplained, propagated.CombinedKG, valid)
+	lower, upper := balance.ConfidenceInterval(unexplained, propagated.CombinedKG)
 	breakdown := dto.UncertaintyBreakdown{
 		CombinedKG:   propagated.CombinedKG,
 		LowerKG:      lower,
@@ -173,13 +197,19 @@ func calculateBalanceRun(tank model.StorageTank, opening, closing model.Measurem
 	evidence := balanceEvidence{
 		AlgorithmVersion: balanceAlgorithmVersion,
 		Equation: map[string]float64{
-			"opening_mass_kg":                  opening.CalculatedLiquidMassKG,
-			"net_transfer_kg":                  net,
-			"closing_mass_kg":                  closing.CalculatedLiquidMassKG,
-			"estimated_bog_and_unexplained_kg": deviation,
+			"opening_mass_kg":    opening.CalculatedLiquidMassKG,
+			"net_transfer_kg":    net,
+			"closing_mass_kg":    closing.CalculatedLiquidMassKG,
+			"total_deviation_kg": deviation,
+			"normal_bog_kg":      normalBOG,
+			"unexplained_kg":     unexplained,
 		},
 		Uncertainty:    breakdown,
+		InputAnomaly:   inputAnomaly,
 		SafetyBoundary: "未解释差异仅为工程分析结果，不直接认定为泄漏或安全事件。",
+	}
+	if inputAnomaly {
+		evidence.AnomalyReason = "估出的正常蒸发量超过总偏差，边界快照或转移计量可能存在问题"
 	}
 	inputSnapshot := map[string]any{
 		"algorithm_version":   balanceAlgorithmVersion,
@@ -203,18 +233,27 @@ func calculateBalanceRun(tank model.StorageTank, opening, closing model.Measurem
 		OpeningMassKG:   opening.CalculatedLiquidMassKG,
 		ClosingMassKG:   closing.CalculatedLiquidMassKG,
 		NetTransferKG:   net,
-		EstimatedBOGKG:  deviation,
+		EstimatedBOGKG:  normalBOG,
+		UnexplainedKG:   unexplained,
 		UncertaintyKG:   propagated.CombinedKG,
 		IntervalLowerKG: lower,
 		IntervalUpperKG: upper,
-		DeviationPct:    balance.DeviationPercent(deviation, opening.CalculatedLiquidMassKG),
+		DeviationPct:    balance.DeviationPercent(unexplained, opening.CalculatedLiquidMassKG),
 		DeviationLevel:  level,
+		InputAnomaly:    inputAnomaly,
 	}, snapshotJSON, evidenceJSON, nil
 }
 
 func (s *BalanceService) Submit(ctx context.Context, id uint, request dto.SubmitBalanceRequest, actor repository.Actor) (model.BalanceRun, error) {
 	if !constants.CanAnalyze(actor.Role) {
 		return model.BalanceRun{}, api.ErrForbidden
+	}
+	run, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return model.BalanceRun{}, err
+	}
+	if run.BalanceStatus == constants.BalanceInputAnomaly {
+		return model.BalanceRun{}, api.NewError(409, "BALANCE_INPUT_ANOMALY", "估出的正常蒸发量超过总偏差，运行已标记为输入异常，不能送审")
 	}
 	return s.repo.Transition(ctx, id, request.Version, constants.BalancePendingReview, "提交独立复核", nil, actor)
 }
