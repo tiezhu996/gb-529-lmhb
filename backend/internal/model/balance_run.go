@@ -13,12 +13,13 @@ type BalanceRun struct {
 	TankID             uint                     `json:"tank_id" gorm:"not null;index"`
 	PeriodStart        time.Time                `json:"period_start" gorm:"not null;index"`
 	PeriodEnd          time.Time                `json:"period_end" gorm:"not null;index"`
-	BalanceStatus      constants.BalanceStatus  `json:"balance_status" gorm:"type:varchar(24);not null;check:balance_status IN ('queued','calculating','pending_review','accepted','rejected','invalidated')"`
+	BalanceStatus      constants.BalanceStatus  `json:"balance_status" gorm:"type:varchar(24);not null;check:balance_status IN ('queued','calculating','pending_review','accepted','rejected','invalidated','input_anomaly')"`
 	InputSnapshotJSON  datatypes.JSON           `json:"input_snapshot_json" gorm:"type:jsonb;not null"`
 	OpeningMassKG      float64                  `json:"opening_mass_kg" gorm:"not null"`
 	ClosingMassKG      float64                  `json:"closing_mass_kg" gorm:"not null"`
 	NetTransferKG      float64                  `json:"net_transfer_kg" gorm:"not null"`
 	EstimatedBOGKG     float64                  `json:"estimated_bog_kg" gorm:"column:estimated_bog_kg;not null"`
+	UnexplainedKG      float64                  `json:"unexplained_kg" gorm:"not null;default:0"`
 	UncertaintyKG      float64                  `json:"uncertainty_kg" gorm:"not null"`
 	IntervalLowerKG    float64                  `json:"interval_lower_kg" gorm:"not null"`
 	IntervalUpperKG    float64                  `json:"interval_upper_kg" gorm:"not null"`

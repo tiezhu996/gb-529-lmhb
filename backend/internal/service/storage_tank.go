@@ -41,6 +41,9 @@ func (s *TankService) Create(ctx context.Context, request dto.CreateTankRequest,
 	if err != nil {
 		return model.StorageTank{}, err
 	}
+	if err := validateBOGRate(request.DailyBOGRatePct, request.BOGRateUncertaintyPct); err != nil {
+		return model.StorageTank{}, err
+	}
 	tank := model.StorageTank{
 		TankCode:              strings.ToUpper(strings.TrimSpace(request.TankCode)),
 		Name:                  strings.TrimSpace(request.Name),
@@ -50,6 +53,8 @@ func (s *TankService) Create(ctx context.Context, request dto.CreateTankRequest,
 		ReferenceDensityKGM3:  request.ReferenceDensityKGM3,
 		ReferenceTemperatureC: request.ReferenceTemperatureC,
 		ThermalExpansionPerC:  request.ThermalExpansionPerC,
+		DailyBOGRatePct:       request.DailyBOGRatePct,
+		BOGRateUncertaintyPct: request.BOGRateUncertaintyPct,
 		CapacityCurveJSON:     datatypes.JSON(curveJSON),
 		CoefficientVersion:    strings.TrimSpace(request.CoefficientVersion),
 		TankStatus:            request.TankStatus,
@@ -76,6 +81,9 @@ func (s *TankService) Update(ctx context.Context, id uint, request dto.UpdateTan
 	if err != nil {
 		return model.StorageTank{}, err
 	}
+	if err := validateBOGRate(request.DailyBOGRatePct, request.BOGRateUncertaintyPct); err != nil {
+		return model.StorageTank{}, err
+	}
 	updated := before
 	updated.Name = strings.TrimSpace(request.Name)
 	updated.NominalCapacityM3 = request.NominalCapacityM3
@@ -84,6 +92,8 @@ func (s *TankService) Update(ctx context.Context, id uint, request dto.UpdateTan
 	updated.ReferenceDensityKGM3 = request.ReferenceDensityKGM3
 	updated.ReferenceTemperatureC = request.ReferenceTemperatureC
 	updated.ThermalExpansionPerC = request.ThermalExpansionPerC
+	updated.DailyBOGRatePct = request.DailyBOGRatePct
+	updated.BOGRateUncertaintyPct = request.BOGRateUncertaintyPct
 	updated.CapacityCurveJSON = datatypes.JSON(curveJSON)
 	updated.CoefficientVersion = strings.TrimSpace(request.CoefficientVersion)
 	updated.TankStatus = request.TankStatus
@@ -107,6 +117,13 @@ func (s *TankService) MeasurementQuality(ctx context.Context, id uint) (dto.Tank
 		result.LatestSnapshot = latest
 	}
 	return result, nil
+}
+
+func validateBOGRate(ratePct, uncertaintyPct float64) error {
+	if err := balance.ValidateBOGRate(ratePct, uncertaintyPct); err != nil {
+		return api.WithDetails(api.NewError(422, "INVALID_BOG_RATE", "日蒸发率或其不确定度超出工程边界"), map[string]any{"reason": err.Error()})
+	}
+	return nil
 }
 
 func validateAndMarshalTank(minimum, maximum, nominal float64, coefficients []float64) ([]byte, error) {

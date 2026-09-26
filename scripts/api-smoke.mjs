@@ -96,6 +96,8 @@ async function main() {
     reference_density_kgm3: 450,
     reference_temperature_c: -160,
     thermal_expansion_per_c: 0.0012,
+    daily_bog_rate_pct: 0.1,
+    bog_rate_uncertainty_pct: 20,
     capacity_curve: [0, 10000],
     coefficient_version: "qa-v1",
     tank_status: "active",
@@ -206,14 +208,22 @@ async function main() {
   });
 
   const acceptedRun = await runAndSubmit(analyst, tankID, periodStart, periodEnd, "accepted-path");
+  // 期间 1 天、日蒸发率 0.1%/天：正常蒸发 45,000 kg，总偏差 215,000 kg，未解释项 170,000 kg。
+  if (acceptedRun.estimated_bog_kg !== 45000 || acceptedRun.unexplained_kg !== 170000) {
+    fail("accepted-path: evaporation was not separated from the unexplained remainder", acceptedRun);
+  }
   const uncertainty = await api(
     "uncertainty breakdown",
     proxy,
     `/api/v1/balances/${acceptedRun.id}/uncertainty`,
     { token: analyst },
   );
-  if (uncertainty.data.balance_run_id !== acceptedRun.id || uncertainty.data.components.length !== 4) {
+  if (uncertainty.data.balance_run_id !== acceptedRun.id || uncertainty.data.components.length !== 5) {
     fail("uncertainty evidence is incomplete", uncertainty);
+  }
+  const evaporationComponent = uncertainty.data.components.find((item) => item.source === "evaporation_estimate");
+  if (!evaporationComponent || evaporationComponent.absolute_kg !== 9000) {
+    fail("evaporation uncertainty was not combined into the breakdown", uncertainty);
   }
 
   const reviewer = await login("reviewer@lng.local");
@@ -256,6 +266,46 @@ async function main() {
     },
   );
   if (rejected.data.balance_status !== "rejected") fail("review was not rejected", rejected);
+
+  // 输入异常路径：新期间总偏差 45,000 kg 低于估计正常蒸发 45,090 kg，运行必须标为输入异常且不能送审。
+  await api("create anomaly opening snapshot", proxy, "/api/v1/measurements", {
+    method: "POST",
+    token: analyst,
+    status: 201,
+    body: {
+      ...measurement,
+      measured_at: "2026-07-03T00:30:00Z",
+      liquid_level_m: 10.02,
+      source_note: "API smoke anomaly-period opening snapshot",
+    },
+  });
+  await api("create anomaly closing snapshot", proxy, "/api/v1/measurements", {
+    method: "POST",
+    token: analyst,
+    status: 201,
+    body: {
+      ...measurement,
+      measured_at: "2026-07-04T00:30:00Z",
+      liquid_level_m: 10.01,
+      source_note: "API smoke anomaly-period closing snapshot",
+    },
+  });
+  const anomalyRun = await api("input anomaly balance run", proxy, "/api/v1/balances/run", {
+    method: "POST",
+    token: analyst,
+    body: { tank_id: tankID, period_start: "2026-07-03T01:00:00Z", period_end: "2026-07-04T01:00:00Z" },
+    status: 201,
+  });
+  if (anomalyRun.data.balance_status !== "input_anomaly") {
+    fail("estimated evaporation above total deviation must flag an input anomaly", anomalyRun);
+  }
+  await api("input anomaly cannot be submitted", proxy, `/api/v1/balances/${anomalyRun.data.id}/submit`, {
+    method: "POST",
+    token: analyst,
+    body: { version: anomalyRun.data.version },
+    status: 409,
+    errorCode: "INVALID_BALANCE_TRANSITION",
+  });
 
   const balances = await api("tank balances", proxy, `/api/v1/balances?tank_id=${tankID}`, {
     token: reviewer,

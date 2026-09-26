@@ -64,17 +64,19 @@ func (r *TankRepository) Create(ctx context.Context, tank *model.StorageTank, ac
 func (r *TankRepository) Update(ctx context.Context, updated, before model.StorageTank, expectedVersion uint, actor Actor) (model.StorageTank, error) {
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		updates := map[string]any{
-			"name":                    updated.Name,
-			"nominal_capacity_m3":     updated.NominalCapacityM3,
-			"min_level_m":             updated.MinLevelM,
-			"max_level_m":             updated.MaxLevelM,
-			"reference_density_kgm3":  updated.ReferenceDensityKGM3,
-			"reference_temperature_c": updated.ReferenceTemperatureC,
-			"thermal_expansion_per_c": updated.ThermalExpansionPerC,
-			"capacity_curve_json":     updated.CapacityCurveJSON,
-			"coefficient_version":     updated.CoefficientVersion,
-			"tank_status":             updated.TankStatus,
-			"version":                 gorm.Expr("version + 1"),
+			"name":                     updated.Name,
+			"nominal_capacity_m3":      updated.NominalCapacityM3,
+			"min_level_m":              updated.MinLevelM,
+			"max_level_m":              updated.MaxLevelM,
+			"reference_density_kgm3":   updated.ReferenceDensityKGM3,
+			"reference_temperature_c":  updated.ReferenceTemperatureC,
+			"thermal_expansion_per_c":  updated.ThermalExpansionPerC,
+			"daily_bog_rate_pct":       updated.DailyBOGRatePct,
+			"bog_rate_uncertainty_pct": updated.BOGRateUncertaintyPct,
+			"capacity_curve_json":      updated.CapacityCurveJSON,
+			"coefficient_version":      updated.CoefficientVersion,
+			"tank_status":              updated.TankStatus,
+			"version":                  gorm.Expr("version + 1"),
 		}
 		result := tx.Model(&model.StorageTank{}).Where("id = ? AND version = ?", updated.ID, expectedVersion).Updates(updates)
 		if result.Error != nil {

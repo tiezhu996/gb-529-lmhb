@@ -37,11 +37,11 @@ docker compose ps
 
 ## 主要功能
 
-- 储罐参数：维护名义容积、有效液位、参考密度、温度膨胀系数和多项式罐容曲线；更新使用 `version` 乐观锁。
+- 储罐参数：维护名义容积、有效液位、参考密度、温度膨胀系数、日蒸发率及其不确定度和多项式罐容曲线；更新使用 `version` 乐观锁。
 - 计量快照：记录液位、液温、汽相压力、密度、不确定度和质量标记；写入时计算罐容、修正密度及液相质量，原值不可覆盖。
 - 物理转移：记录实际流入/流出、时间段、计量质量和物理参考；同一储罐的未取消时间段不得重叠。
-- 平衡运行：选择期初和期末有效快照，汇总期间已确认转移，保存完整输入、系数版本、方程和不确定度证据。
-- 独立复核：`queued -> calculating -> pending_review -> accepted | rejected | invalidated`，接受/驳回只允许复核员或管理员。
+- 平衡运行：选择期初和期末有效快照，汇总期间已确认转移，按期间长度估计正常蒸发并从总偏差中扣除，保存完整输入、系数版本、方程和不确定度证据。
+- 独立复核：`queued -> calculating -> pending_review -> accepted | rejected | invalidated`；估计蒸发量超过总偏差的运行标为 `input_anomaly`，只能作废、不能送审，接受/驳回只允许复核员或管理员。
 - 审计追踪：参数、快照、转移、运行、提交和复核均保存 request ID、操作者及前后摘要。
 - 横切能力：JWT、RBAC、全局错误、结构化访问日志、request ID、panic recovery、本地令牌桶限流和优雅停机。
 
@@ -52,9 +52,9 @@ docker compose ps
 1. 罐容曲线：`V(h) = a0 + a1*h + a2*h² + ...`。保存参数时按 20 个液位点校验单调性和名义容积边界。
 2. 温度修正密度：`rho_t = rho_input / (1 + alpha * (T - T_ref))`。
 3. 液相质量：`M = V(h) * rho_t`。
-4. 物理质量平衡：`M_open + M_in - M_out - M_close = M_BOG/unexplained`。
-5. 不确定度：`U = sqrt(sum((M_i * u_i / 100)²))`。
-6. `|deviation| <= U` 为 `within_uncertainty`；`U < |deviation| <= 2U` 为 `watch`；超过 `2U` 为 `investigate`；无效边界为 `invalid`。
+4. 正常蒸发估计：`M_BOG = M_open * r_day / 100 * days`，`r_day` 为储罐日蒸发率（%/天），`days` 为期间天数；未解释项 `M_unexplained = M_open + M_in - M_out - M_close - M_BOG`。估计蒸发量超过总偏差时运行标为 `input_anomaly`，不得送审。
+5. 不确定度：`U = sqrt(sum((M_i * u_i / 100)²) + (M_BOG * u_BOG / 100)²)`，蒸发率不确定度并入合成不确定度。
+6. `|unexplained| <= U` 为 `within_uncertainty`；`U < |unexplained| <= 2U` 为 `watch`；超过 `2U` 为 `investigate`；无效边界或输入异常为 `invalid`。
 
 模型不包含组分、分层、压力-温度平衡、管线存量或现场仪表系统误差，不能替代经批准的工艺与安全程序。
 
@@ -125,7 +125,7 @@ docker compose ps
 
 ## 共享枚举出现位置
 
-`BalanceStatus = queued | calculating | pending_review | accepted | rejected | invalidated`：
+`BalanceStatus = queued | calculating | pending_review | accepted | rejected | invalidated | input_anomaly`：
 
 - 数据库/model：`backend/internal/model/balance_run.go`
 - 后端常量、DTO、repository、service、handler、router：`backend/internal/constants/balance.go`、`backend/internal/dto/balance_run.go`、`backend/internal/repository/balance_run.go`、`backend/internal/service/balance_run.go`、`backend/internal/handler/balance_run.go`、`backend/internal/router/router.go`

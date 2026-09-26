@@ -39,6 +39,19 @@ func ValidateUncertainty(percent float64) error {
 	return nil
 }
 
+func ValidateBOGRate(ratePct, uncertaintyPct float64) error {
+	if !finite(ratePct) || ratePct < 0 || ratePct > 5 {
+		return fmt.Errorf("daily boil-off rate %.6f%%/day must be within [0, 5]", ratePct)
+	}
+	if !finite(uncertaintyPct) || uncertaintyPct < 0 || uncertaintyPct > 100 {
+		return fmt.Errorf("boil-off rate uncertainty %.6f%% must be within [0, 100]", uncertaintyPct)
+	}
+	if ratePct > 0 && uncertaintyPct <= 0 {
+		return fmt.Errorf("a positive boil-off rate requires a positive rate uncertainty")
+	}
+	return nil
+}
+
 func PercentFraction(percent float64) float64 { return percent / 100 }
 
 func Round(value float64, places int) float64 {

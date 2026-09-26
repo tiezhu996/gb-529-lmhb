@@ -9,6 +9,8 @@ type CreateTankRequest struct {
 	ReferenceDensityKGM3  float64   `json:"reference_density_kgm3" binding:"required,gte=350,lte=550"`
 	ReferenceTemperatureC float64   `json:"reference_temperature_c" binding:"gte=-200,lte=-100"`
 	ThermalExpansionPerC  float64   `json:"thermal_expansion_per_c" binding:"required,gte=0.0001,lte=0.01"`
+	DailyBOGRatePct       float64   `json:"daily_bog_rate_pct" binding:"gte=0,lte=5"`
+	BOGRateUncertaintyPct float64   `json:"bog_rate_uncertainty_pct" binding:"gte=0,lte=100"`
 	CapacityCurve         []float64 `json:"capacity_curve" binding:"required,min=2,max=6,dive,gte=-1000000,lte=1000000"`
 	CoefficientVersion    string    `json:"coefficient_version" binding:"required,min=2,max=32"`
 	TankStatus            string    `json:"tank_status" binding:"required,oneof=active calibration_due inactive"`
@@ -22,6 +24,8 @@ type UpdateTankRequest struct {
 	ReferenceDensityKGM3  float64   `json:"reference_density_kgm3" binding:"required,gte=350,lte=550"`
 	ReferenceTemperatureC float64   `json:"reference_temperature_c" binding:"gte=-200,lte=-100"`
 	ThermalExpansionPerC  float64   `json:"thermal_expansion_per_c" binding:"required,gte=0.0001,lte=0.01"`
+	DailyBOGRatePct       float64   `json:"daily_bog_rate_pct" binding:"gte=0,lte=5"`
+	BOGRateUncertaintyPct float64   `json:"bog_rate_uncertainty_pct" binding:"gte=0,lte=100"`
 	CapacityCurve         []float64 `json:"capacity_curve" binding:"required,min=2,max=6,dive,gte=-1000000,lte=1000000"`
 	CoefficientVersion    string    `json:"coefficient_version" binding:"required,min=2,max=32"`
 	TankStatus            string    `json:"tank_status" binding:"required,oneof=active calibration_due inactive"`

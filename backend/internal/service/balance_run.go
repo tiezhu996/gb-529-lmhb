@@ -18,7 +18,7 @@ import (
 	"lng-boiloff-gas-balance/backend/pkg/api"
 )
 
-const balanceAlgorithmVersion = "mass-balance-v1.0"
+const balanceAlgorithmVersion = "mass-balance-v1.1"
 
 type BalanceService struct {
 	repo            *repository.BalanceRepository
@@ -75,17 +75,22 @@ func (s *BalanceService) Run(ctx context.Context, request dto.RunBalanceRequest,
 	if err != nil {
 		return model.BalanceRun{}, err
 	}
+	status := constants.BalanceCalculating
+	if calculation.InputAnomaly {
+		status = constants.BalanceInputAnomaly
+	}
 	run := model.BalanceRun{
 		TankID:             tank.ID,
 		PeriodStart:        start,
 		PeriodEnd:          end,
-		BalanceStatus:      constants.BalanceCalculating,
+		BalanceStatus:      status,
 		InputSnapshotJSON:  datatypes.JSON(snapshotJSON),
 		EvidenceJSON:       datatypes.JSON(evidenceJSON),
 		OpeningMassKG:      calculation.OpeningMassKG,
 		ClosingMassKG:      calculation.ClosingMassKG,
 		NetTransferKG:      calculation.NetTransferKG,
 		EstimatedBOGKG:     calculation.EstimatedBOGKG,
+		UnexplainedKG:      calculation.UnexplainedKG,
 		UncertaintyKG:      calculation.UncertaintyKG,
 		IntervalLowerKG:    calculation.IntervalLowerKG,
 		IntervalUpperKG:    calculation.IntervalUpperKG,
@@ -107,11 +112,13 @@ type calculatedBalance struct {
 	ClosingMassKG   float64
 	NetTransferKG   float64
 	EstimatedBOGKG  float64
+	UnexplainedKG   float64
 	UncertaintyKG   float64
 	IntervalLowerKG float64
 	IntervalUpperKG float64
 	DeviationPct    float64
 	DeviationLevel  constants.DeviationLevel
+	InputAnomaly    bool
 }
 
 type balanceEvidence struct {
@@ -153,18 +160,33 @@ func calculateBalanceRun(tank model.StorageTank, opening, closing model.Measurem
 	if err != nil {
 		return calculatedBalance{}, nil, nil, fmt.Errorf("calculate physical mass balance: %w", err)
 	}
+	evaporation, err := balance.EstimateEvaporation(opening.CalculatedLiquidMassKG, tank.DailyBOGRatePct, tank.BOGRateUncertaintyPct, end.Sub(start))
+	if err != nil {
+		return calculatedBalance{}, nil, nil, fmt.Errorf("estimate normal evaporation: %w", err)
+	}
+	// 估计蒸发量超过总偏差说明边界或转移计量有问题，该运行只能标为输入异常。
+	anomaly := evaporation.EstimatedKG > deviation
+	unexplained := balance.Round(deviation-evaporation.EstimatedKG, 3)
 	propagated, err := balance.PropagateUncertainty(uncertaintyInputs)
 	if err != nil {
 		return calculatedBalance{}, nil, nil, fmt.Errorf("propagate measurement uncertainty: %w", err)
 	}
+	combined, err := balance.CombineAbsoluteUncertainty(propagated.CombinedKG, evaporation.UncertaintyKG)
+	if err != nil {
+		return calculatedBalance{}, nil, nil, fmt.Errorf("combine evaporation uncertainty: %w", err)
+	}
 	for index := range components {
 		components[index].AbsoluteKG = propagated.Components[index]
 	}
+	components = append(components, dto.UncertaintyComponent{
+		Source: "evaporation_estimate", EntityID: tank.ID, MassKG: evaporation.EstimatedKG,
+		UncertaintyPct: tank.BOGRateUncertaintyPct, AbsoluteKG: evaporation.UncertaintyKG,
+	})
 	valid := opening.QualityFlag != constants.QualityInvalid && closing.QualityFlag != constants.QualityInvalid
-	level := balance.ClassifyDeviation(deviation, propagated.CombinedKG, valid)
-	lower, upper := balance.ConfidenceInterval(deviation, propagated.CombinedKG)
+	level := balance.ClassifyDeviation(unexplained, combined, valid && !anomaly)
+	lower, upper := balance.ConfidenceInterval(unexplained, combined)
 	breakdown := dto.UncertaintyBreakdown{
-		CombinedKG:   propagated.CombinedKG,
+		CombinedKG:   combined,
 		LowerKG:      lower,
 		UpperKG:      upper,
 		Relationship: level,
@@ -173,10 +195,16 @@ func calculateBalanceRun(tank model.StorageTank, opening, closing model.Measurem
 	evidence := balanceEvidence{
 		AlgorithmVersion: balanceAlgorithmVersion,
 		Equation: map[string]float64{
-			"opening_mass_kg":                  opening.CalculatedLiquidMassKG,
-			"net_transfer_kg":                  net,
-			"closing_mass_kg":                  closing.CalculatedLiquidMassKG,
-			"estimated_bog_and_unexplained_kg": deviation,
+			"opening_mass_kg":            opening.CalculatedLiquidMassKG,
+			"net_transfer_kg":            net,
+			"closing_mass_kg":            closing.CalculatedLiquidMassKG,
+			"total_deviation_kg":         deviation,
+			"estimated_normal_bog_kg":    evaporation.EstimatedKG,
+			"unexplained_deviation_kg":   unexplained,
+			"period_days":                evaporation.PeriodDays,
+			"daily_bog_rate_pct":         tank.DailyBOGRatePct,
+			"bog_rate_uncertainty_pct":   tank.BOGRateUncertaintyPct,
+			"evaporation_uncertainty_kg": evaporation.UncertaintyKG,
 		},
 		Uncertainty:    breakdown,
 		SafetyBoundary: "未解释差异仅为工程分析结果，不直接认定为泄漏或安全事件。",
@@ -203,12 +231,14 @@ func calculateBalanceRun(tank model.StorageTank, opening, closing model.Measurem
 		OpeningMassKG:   opening.CalculatedLiquidMassKG,
 		ClosingMassKG:   closing.CalculatedLiquidMassKG,
 		NetTransferKG:   net,
-		EstimatedBOGKG:  deviation,
-		UncertaintyKG:   propagated.CombinedKG,
+		EstimatedBOGKG:  evaporation.EstimatedKG,
+		UnexplainedKG:   unexplained,
+		UncertaintyKG:   combined,
 		IntervalLowerKG: lower,
 		IntervalUpperKG: upper,
-		DeviationPct:    balance.DeviationPercent(deviation, opening.CalculatedLiquidMassKG),
+		DeviationPct:    balance.DeviationPercent(unexplained, opening.CalculatedLiquidMassKG),
 		DeviationLevel:  level,
+		InputAnomaly:    anomaly,
 	}, snapshotJSON, evidenceJSON, nil
 }
 
